@@ -1,0 +1,4 @@
+# Set executable permission for shell scripts (works across all platforms)
+*.sh text eol=lf
+start.sh filter= diff= merge= text eol=lf
+mvnw filter= diff= merge= text eol=lf

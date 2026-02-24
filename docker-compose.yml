@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # ── ONE database to replace them all ──────────────────────────────────────
+  postgres:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.postgres
+    container_name: just-use-postgres-db
+    environment:
+      POSTGRES_DB: justusepg
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: pgpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pguser -d justusepg"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Spring Boot application ───────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: just-use-postgres-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/justusepg
+      SPRING_DATASOURCE_USERNAME: pguser
+      SPRING_DATASOURCE_PASSWORD: pgpass
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

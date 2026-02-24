@@ -1,0 +1,14 @@
+# Custom Postgres image with ALL extensions pre-installed
+# This single database replaces: Elasticsearch, Pinecone, InfluxDB, Redis, MongoDB, and specialized GIS
+FROM pgvector/pgvector:pg16
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql-16-postgis-3 \
+    postgresql-16-postgis-3-scripts \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy initialization SQL
+COPY init.sql /docker-entrypoint-initdb.d/01-init.sql
+
+EXPOSE 5432

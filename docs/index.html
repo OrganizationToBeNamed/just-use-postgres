@@ -1,0 +1,1917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Just Use Postgres — One Database to Replace Them All</title>
+<meta name="description" content="Interactive guide showing how PostgreSQL extensions replace Elasticsearch, Pinecone, Redis, MongoDB, InfluxDB, and specialized GIS databases.">
+<style>
+/* ── RESET & BASE ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f7f8fc;--bg3:#eef1f8;--bg4:#dce1ed;
+  --fg:#1e293b;--fg2:#475569;--fg3:#94a3b8;
+  --accent:#2563eb;--accent2:#7c3aed;--accent3:#0891b2;
+  --green:#059669;--red:#dc2626;--orange:#d97706;--pink:#db2777;
+  --radius:12px;--radius-lg:20px;
+  --font-mono:'SF Mono','Cascadia Code','Fira Code',monospace;
+  --font-sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--fg);line-height:1.7;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none;transition:color .2s}
+a:hover{color:var(--accent3)}
+::selection{background:var(--accent);color:#fff}
+code{color:var(--accent2);background:var(--bg3);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:.85em}
+
+/* ── SCROLLBAR ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:8px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--fg3)}
+
+/* ── UTILITIES ────────────────────────────────────────────────────────── */
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+.section{padding:100px 0}
+.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.badge-blue{background:rgba(37,99,235,.08);color:var(--accent)}
+.badge-green{background:rgba(5,150,105,.08);color:var(--green)}
+.badge-purple{background:rgba(124,58,237,.08);color:var(--accent2)}
+
+/* ── FADE-IN ANIMATION ───────────────────────────────────────────────── */
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* ── NAV ──────────────────────────────────────────────────────────────── */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:14px 0;transition:background .3s,box-shadow .3s}
+nav.scrolled{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+nav .container{display:flex;align-items:center;justify-content:space-between}
+nav .logo{font-weight:800;font-size:1.1rem;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--fg);cursor:pointer}
+nav .logo span{color:var(--accent)}
+nav ul{display:flex;list-style:none;gap:28px}
+nav ul a{color:var(--fg2);font-size:.875rem;font-weight:500;transition:color .2s}
+nav ul a:hover{color:var(--fg)}
+.nav-cta{background:var(--accent);color:#fff!important;padding:8px 20px;border-radius:8px;font-weight:600;font-size:.875rem;transition:transform .2s,box-shadow .2s}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(37,99,235,.3)}
+.hamburger{display:none;background:none;border:none;color:var(--fg);font-size:1.5rem;cursor:pointer}
+
+/* ── HERO ─────────────────────────────────────────────────────────────── */
+.hero{min-height:100vh;display:flex;align-items:center;position:relative;overflow:hidden;padding-top:80px}
+.hero::before{content:'';position:absolute;top:-300px;left:50%;transform:translateX(-50%);width:900px;height:900px;background:radial-gradient(circle,rgba(37,99,235,.06) 0%,rgba(124,58,237,.03) 40%,transparent 70%);pointer-events:none}
+.hero-content{text-align:center;max-width:860px;margin:0 auto;position:relative;z-index:1}
+.hero-year{font-size:1rem;font-weight:700;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:16px}
+.hero h1{font-size:clamp(2.5rem,6vw,4.5rem);font-weight:900;line-height:1.1;margin-bottom:24px;background:linear-gradient(135deg,#1e293b 0%,var(--accent) 45%,var(--accent3) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{font-size:1.25rem;color:var(--fg2);max-width:640px;margin:0 auto 40px}
+.hero-stats{display:flex;justify-content:center;gap:48px;margin-top:48px;flex-wrap:wrap}
+.hero-stat{text-align:center}
+.hero-stat .num{font-size:2.5rem;font-weight:900;color:var(--accent);display:block}
+.hero-stat .label{font-size:.85rem;color:var(--fg3);margin-top:4px}
+.hero-badges{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:32px}
+
+/* ── ANIMATED DB ICONS ────────────────────────────────────────────────── */
+.db-orbit{position:relative;width:380px;height:380px;margin:60px auto 0}
+.db-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90px;height:90px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;box-shadow:0 0 60px rgba(37,99,235,.2);z-index:2}
+.db-satellite{position:absolute;width:48px;height:48px;background:var(--bg3);border:2px solid var(--bg4);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;transition:all .3s;cursor:pointer;z-index:3}
+.db-satellite:hover{transform:scale(1.2) !important;border-color:var(--accent);box-shadow:0 0 20px rgba(37,99,235,.15)}
+.db-satellite .tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--bg4);color:var(--fg);padding:6px 12px;border-radius:8px;font-size:.75rem;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s}
+.db-satellite:hover .tooltip{opacity:1}
+.orbit-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:1px dashed var(--bg4);border-radius:50%;animation:spin 40s linear infinite}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.orbit-ring.r1{width:300px;height:300px}
+.orbit-ring.r2{width:220px;height:220px;animation-duration:30s;animation-direction:reverse}
+.orbit-ring.r3{width:140px;height:140px;animation-duration:20s}
+
+/* ── COMPARISON TABLE ─────────────────────────────────────────────────── */
+.comparison-table{width:100%;border-collapse:separate;border-spacing:0;border-radius:var(--radius-lg);overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);border:1px solid var(--bg4)}
+.comparison-table thead{background:var(--bg3)}
+.comparison-table th{padding:16px 20px;text-align:left;font-size:.8rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--fg3);border-bottom:1px solid var(--bg4)}
+.comparison-table td{padding:16px 20px;border-bottom:1px solid var(--bg4);transition:background .2s}
+.comparison-table tbody tr{cursor:pointer;transition:all .25s ease}
+.comparison-table tr:hover td{background:rgba(37,99,235,.08)}
+.comparison-table tbody tr:hover{box-shadow:inset 4px 0 0 var(--accent)}
+.comparison-table tbody tr:active td{background:rgba(37,99,235,.12)}
+.comparison-table tbody tr:last-child td{border-bottom:none}
+.comparison-table .check{color:var(--green);font-weight:700;font-size:1.1rem}
+.comparison-table .tool-name{display:flex;align-items:center;gap:8px}
+.comparison-table .icon{font-size:1.2rem}
+.comparison-table code{background:var(--bg3);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);font-size:.85rem;color:var(--accent2)}
+.comparison-table .deep-link{color:var(--fg);text-decoration:none;display:flex;align-items:center;gap:8px}
+.comparison-table .deep-link::after{content:'→';font-size:.85rem;opacity:0;transform:translateX(-4px);transition:all .25s ease;color:var(--accent)}
+.comparison-table tbody tr:hover .deep-link::after{opacity:1;transform:translateX(0)}
+.comparison-table .deep-link:hover{color:var(--accent)}
+
+/* ── CONCEPT CARDS ────────────────────────────────────────────────────── */
+.concepts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:24px;margin-top:48px}
+.concept-card{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);padding:32px;cursor:pointer;transition:all .3s;position:relative;overflow:hidden}
+.concept-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--card-accent,var(--accent));opacity:0;transition:opacity .3s}
+.concept-card:hover{border-color:var(--card-accent,var(--accent));transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
+.concept-card:hover::before{opacity:1}
+.concept-card .card-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:16px}
+.concept-card h3{font-size:1.2rem;margin-bottom:8px}
+.concept-card .replaces{color:var(--fg3);font-size:.85rem;margin-bottom:12px}
+.concept-card .replaces strong{color:var(--red);text-decoration:line-through;text-decoration-thickness:1.5px}
+.concept-card p{color:var(--fg2);font-size:.9rem}
+.concept-card .algo-match{margin-top:16px;padding:10px 14px;background:rgba(5,150,105,.06);border:1px solid rgba(5,150,105,.15);border-radius:8px;font-size:.8rem;color:var(--green)}
+.concept-card .algo-match strong{color:var(--green)}
+
+/* ── DEEP DIVE SECTIONS ──────────────────────────────────────────────── */
+.deep-dive{padding:80px 0;border-top:1px solid var(--bg4)}
+.deep-dive:nth-child(even){background:var(--bg2)}
+.dd-header{display:flex;align-items:center;gap:16px;margin-bottom:40px;flex-wrap:wrap}
+.dd-header .dd-icon{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0}
+.dd-header h2{font-size:2rem;font-weight:800}
+.dd-header .dd-replaces{font-size:.9rem;color:var(--fg3)}
+.dd-header .dd-replaces strong{color:var(--red);text-decoration:line-through}
+
+.dd-split{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:32px}
+.dd-panel{background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);overflow:hidden}
+.dd-panel.old{border-color:rgba(220,38,38,.2)}
+.dd-panel.new{border-color:rgba(5,150,105,.2)}
+.dd-panel-header{padding:14px 20px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:.85rem;border-bottom:1px solid var(--bg4)}
+.dd-panel.old .dd-panel-header{background:rgba(220,38,38,.05);color:var(--red)}
+.dd-panel.new .dd-panel-header{background:rgba(5,150,105,.05);color:var(--green)}
+.dd-panel-body{padding:20px;font-family:var(--font-mono);font-size:.82rem;line-height:1.8;color:var(--fg2);overflow-x:auto;white-space:pre;background:var(--bg)}
+.dd-panel-body .kw{color:var(--accent)}
+.dd-panel-body .fn{color:var(--accent3)}
+.dd-panel-body .str{color:var(--green)}
+.dd-panel-body .cmt{color:var(--fg3);font-style:italic}
+.dd-panel-body .num{color:var(--orange)}
+.dd-panel-body .op{color:var(--pink)}
+
+.dd-explanation{margin-top:32px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.dd-fact{padding:20px;background:var(--bg3);border-radius:var(--radius);border-left:3px solid var(--accent)}
+.dd-fact h4{font-size:.9rem;margin-bottom:8px;color:var(--fg)}
+.dd-fact p{font-size:.85rem;color:var(--fg2)}
+.dd-fact .highlight{color:var(--accent);font-weight:700}
+
+/* ── INTERACTIVE SQL PLAYGROUND ───────────────────────────────────────── */
+.playground{margin-top:40px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius-lg);overflow:hidden}
+.playground-tabs{display:flex;border-bottom:1px solid var(--bg4);overflow-x:auto}
+.playground-tab{padding:12px 24px;font-size:.85rem;font-weight:600;color:var(--fg3);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.playground-tab:hover{color:var(--fg2)}
+.playground-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(37,99,235,.04)}
+.playground-content{display:none;padding:24px}
+.playground-content.active{display:block}
+.playground-sql{background:var(--bg2);border:1px solid var(--bg4);border-radius:8px;padding:20px;font-family:var(--font-mono);font-size:.82rem;line-height:1.8;color:var(--fg);overflow-x:auto}
+.playground-result{margin-top:16px;padding:16px;background:rgba(5,150,105,.04);border:1px solid rgba(5,150,105,.15);border-radius:8px}
+.playground-result h5{font-size:.8rem;color:var(--green);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.playground-result pre{font-family:var(--font-mono);font-size:.8rem;color:var(--fg2);line-height:1.6}
+.playground-note{margin-top:12px;font-size:.8rem;color:var(--fg3);font-style:italic}
+
+/* ── ARCHITECTURE ─────────────────────────────────────────────────────── */
+.arch-visual{margin-top:48px;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--radius-lg);padding:40px;text-align:center;position:relative}
+.arch-layer{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+.arch-box{padding:12px 20px;border-radius:8px;font-size:.8rem;font-weight:600;border:1px solid;transition:all .3s;cursor:pointer}
+.arch-box:hover{transform:translateY(-2px)}
+.arch-box.app{background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.2);color:var(--accent)}
+.arch-box.pg{background:rgba(5,150,105,.06);border-color:rgba(5,150,105,.2);color:var(--green)}
+.arch-arrow{font-size:1.5rem;color:var(--fg3);margin:8px 0}
+.arch-pg-box{display:inline-block;padding:24px 40px;background:linear-gradient(135deg,rgba(5,150,105,.06),rgba(37,99,235,.06));border:2px solid rgba(5,150,105,.25);border-radius:var(--radius-lg);margin-top:8px}
+.arch-pg-box h3{font-size:1.2rem;color:var(--green);margin-bottom:12px}
+.arch-ext{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.arch-ext span{padding:6px 14px;background:var(--bg);border:1px solid var(--bg4);border-radius:6px;font-size:.75rem;font-family:var(--font-mono);color:var(--fg2)}
+
+/* ── CTA ──────────────────────────────────────────────────────────────── */
+.cta-section{text-align:center;padding:100px 0;position:relative}
+.cta-section::before{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(circle,rgba(124,58,237,.04) 0%,transparent 70%);pointer-events:none}
+.cta-section h2{font-size:2.5rem;font-weight:900;margin-bottom:16px}
+.cta-section p{color:var(--fg2);font-size:1.1rem;margin-bottom:32px}
+.cta-buttons{display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+.btn{padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;display:inline-flex;align-items:center;gap:8px;transition:all .2s;border:none;cursor:pointer}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 16px rgba(37,99,235,.25)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,99,235,.3);color:#fff}
+.btn-outline{background:transparent;border:2px solid var(--bg4);color:var(--fg)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-2px)}
+
+/* ── FOOTER ───────────────────────────────────────────────────────────── */
+footer{padding:40px 0;border-top:1px solid var(--bg4);text-align:center;color:var(--fg3);font-size:.85rem}
+
+/* ── RESPONSIVE ───────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  nav ul{display:none}
+  .hamburger{display:block}
+  nav ul.open{display:flex;flex-direction:column;position:absolute;top:100%;left:0;right:0;background:var(--bg);padding:20px;gap:16px;border-bottom:1px solid var(--bg4)}
+  .hero h1{font-size:2.2rem}
+  .hero-stats{gap:24px}
+  .dd-split{grid-template-columns:1fr}
+  .concepts-grid{grid-template-columns:1fr}
+  .db-orbit{width:320px;height:320px}
+  .section{padding:60px 0}
+}
+
+/* ── TAB UNDERLINE ANIMATION ──────────────────────────────────────────── */
+@keyframes tabSlide{from{width:0}to{width:100%}}
+.playground-tab.active::after{content:'';display:block;height:0;animation:tabSlide .3s ease}
+
+/* ── PULSE ────────────────────────────────────────────────────────────── */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.pulse{animation:pulse 2s ease-in-out infinite}
+
+/* ── COUNTER ANIMATION ────────────────────────────────────────────────── */
+.count-up{transition:all 1s ease}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     NAVIGATION
+     ═══════════════════════════════════════════════════════════════════ -->
+<nav id="nav">
+  <div class="container">
+    <a href="#hero" class="logo" style="text-decoration:none;color:inherit">🐘 <span>JustUsePG</span></a>
+    <button class="hamburger" onclick="document.querySelector('nav ul').classList.toggle('open')" aria-label="Menu">☰</button>
+    <ul>
+      <li><a href="#comparison">Comparison</a></li>
+      <li><a href="#concepts">Concepts</a></li>
+      <li><a href="#deep-dives">Deep Dives</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="https://github.com/OrganizationToBeNamed/just-use-postgres" class="nav-cta" target="_blank">⭐ View Repo</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     HERO
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-content reveal">
+      <div class="hero-year">It's 2026</div>
+      <h1>Just Use Postgres.</h1>
+      <div class="hero-badges">
+        <span class="badge badge-blue">pgvector</span>
+        <span class="badge badge-green">PostGIS</span>
+        <span class="badge badge-purple">JSONB</span>
+        <span class="badge badge-blue">tsvector</span>
+        <span class="badge badge-green">BRIN</span>
+        <span class="badge badge-purple">UNLOGGED</span>
+        <span class="badge badge-blue">pgmq</span>
+        <span class="badge badge-green">pg_cron</span>
+        <span class="badge badge-purple">CTEs</span>
+        <span class="badge badge-blue">RRF</span>
+      </div>
+      <p>One database. Ten capabilities. Replace Elasticsearch, Pinecone, InfluxDB, Redis, MongoDB, specialized GIS, Kafka, cron daemons, Neo4j, and multi-service search pipelines — using the <strong>same algorithms</strong> they use internally.</p>
+      <div class="cta-buttons">
+        <a href="#deep-dives" class="btn btn-primary">Explore How ↓</a>
+        <a href="https://github.com/rajeshanji8/just-use-postgres" target="_blank" class="btn btn-outline">View Spring Boot Repo →</a>
+      </div>
+
+      <!-- Orbit Animation — 10 satellites evenly spaced at 36° intervals -->
+      <div class="db-orbit" aria-hidden="true">
+        <div class="orbit-ring r1"></div>
+        <div class="orbit-ring r2"></div>
+        <div class="orbit-ring r3"></div>
+        <div class="db-center">🐘</div>
+        <!-- 0°   (top center) -->
+        <div class="db-satellite" style="top:2%;left:50%;transform:translate(-50%,-50%)">🔍<span class="tooltip">Elasticsearch → tsvector</span></div>
+        <!-- 36°  -->
+        <div class="db-satellite" style="top:10%;right:9%;transform:translate(50%,-50%)">🧠<span class="tooltip">Pinecone → pgvector</span></div>
+        <!-- 72°  -->
+        <div class="db-satellite" style="top:35%;right:-2%;transform:translate(50%,-50%)">📊<span class="tooltip">InfluxDB → Partitions</span></div>
+        <!-- 108° -->
+        <div class="db-satellite" style="bottom:22%;right:4%;transform:translate(50%,50%)">⚡<span class="tooltip">Redis → UNLOGGED</span></div>
+        <!-- 144° -->
+        <div class="db-satellite" style="bottom:3%;right:20%;transform:translate(50%,50%)">📄<span class="tooltip">MongoDB → JSONB</span></div>
+        <!-- 180° (bottom center) -->
+        <div class="db-satellite" style="bottom:2%;left:50%;transform:translate(-50%,50%)">🌍<span class="tooltip">GIS → PostGIS</span></div>
+        <!-- 216° -->
+        <div class="db-satellite" style="bottom:3%;left:20%;transform:translate(-50%,50%)">📬<span class="tooltip">Kafka → pgmq</span></div>
+        <!-- 252° -->
+        <div class="db-satellite" style="bottom:22%;left:4%;transform:translate(-50%,50%)">⏰<span class="tooltip">Cron → pg_cron</span></div>
+        <!-- 288° -->
+        <div class="db-satellite" style="top:35%;left:-2%;transform:translate(-50%,-50%)">🕸️<span class="tooltip">Neo4j → CTEs</span></div>
+        <!-- 324° -->
+        <div class="db-satellite" style="top:10%;left:9%;transform:translate(-50%,-50%)">🔗<span class="tooltip">Search pipeline → RRF</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     COMPARISON TABLE
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="section" id="comparison" style="background:var(--bg2)">
+  <div class="container">
+    <div class="reveal">
+      <span class="badge badge-blue">Side by side</span>
+      <h2 style="font-size:2rem;font-weight:800;margin:16px 0 8px">Same Algorithm. Fewer Moving Parts.</h2>
+      <p style="color:var(--fg2);max-width:600px;margin-bottom:40px">Each specialized database implements one core algorithm well. PostgreSQL extensions implement <strong style="color:var(--green)">the exact same algorithms</strong>.</p>
+    </div>
+
+    <div class="reveal" style="overflow-x:auto">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>What You Need</th>
+            <th>Specialized Tool</th>
+            <th>Postgres Extension</th>
+            <th>Algorithm</th>
+            <th>Same?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-link="#dd-fts">
+            <td><a href="#dd-fts" class="deep-link"><strong>Full-text search</strong></a></td>
+            <td><span class="tool-name"><span class="icon">🔍</span> Elasticsearch</span></td>
+            <td><code>tsvector</code> + <code>pg_trgm</code></td>
+            <td>BM25 (TF-IDF ranking)</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-vector">
+            <td><a href="#dd-vector" class="deep-link"><strong>Vector search</strong></a></td>
+            <td><span class="tool-name"><span class="icon">🧠</span> Pinecone</span></td>
+            <td><code>pgvector</code> (HNSW index)</td>
+            <td>HNSW / DiskANN</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-ts">
+            <td><a href="#dd-ts" class="deep-link"><strong>Time-series</strong></a></td>
+            <td><span class="tool-name"><span class="icon">📊</span> InfluxDB</span></td>
+            <td>Partitioning + <code>BRIN</code></td>
+            <td>Time partitioning</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-cache">
+            <td><a href="#dd-cache" class="deep-link"><strong>Caching</strong></a></td>
+            <td><span class="tool-name"><span class="icon">⚡</span> Redis</span></td>
+            <td><code>UNLOGGED</code> tables</td>
+            <td>In-memory / WAL-skip</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-doc">
+            <td><a href="#dd-doc" class="deep-link"><strong>Documents</strong></a></td>
+            <td><span class="tool-name"><span class="icon">📄</span> MongoDB</span></td>
+            <td><code>JSONB</code> + GIN index</td>
+            <td>Document indexing</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-geo">
+            <td><a href="#dd-geo" class="deep-link"><strong>Geospatial</strong></a></td>
+            <td><span class="tool-name"><span class="icon">🌍</span> Specialized GIS</span></td>
+            <td><code>PostGIS</code></td>
+            <td>R-tree spatial index</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-queue">
+            <td><a href="#dd-queue" class="deep-link"><strong>Message queues</strong></a></td>
+            <td><span class="tool-name"><span class="icon">📬</span> Kafka / RabbitMQ</span></td>
+            <td><code>pgmq</code> + <code>SKIP LOCKED</code></td>
+            <td>Visibility timeout pattern</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-cron">
+            <td><a href="#dd-cron" class="deep-link"><strong>Cron / scheduling</strong></a></td>
+            <td><span class="tool-name"><span class="icon">⏰</span> External cron / Airflow</span></td>
+            <td><code>pg_cron</code></td>
+            <td>Cron scheduling</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-graph">
+            <td><a href="#dd-graph" class="deep-link"><strong>Graph traversal</strong></a></td>
+            <td><span class="tool-name"><span class="icon">🕸️</span> Neo4j</span></td>
+            <td>Recursive <code>CTEs</code> + <code>Apache AGE</code></td>
+            <td>Graph BFS / DFS</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+          <tr data-link="#dd-hybrid">
+            <td><a href="#dd-hybrid" class="deep-link"><strong>Hybrid search</strong></a></td>
+            <td><span class="tool-name"><span class="icon">🔗</span> ES + Pinecone pipeline</span></td>
+            <td><code>tsvector</code> + <code>pgvector</code> RRF</td>
+            <td>Reciprocal Rank Fusion</td>
+            <td><span class="check">✅</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="hero-stats reveal" style="margin-top:48px">
+      <div class="hero-stat"><span class="num" data-target="10">0</span><span class="label">Databases replaced</span></div>
+      <div class="hero-stat"><span class="num" data-target="1">0</span><span class="label">Database needed</span></div>
+      <div class="hero-stat"><span class="num" data-target="75">0</span><span class="label">% cost savings</span></div>
+      <div class="hero-stat"><span class="num" data-target="28">0</span><span class="label">× lower latency (pgvectorscale)</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CONCEPT CARDS
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="section" id="concepts">
+  <div class="container">
+    <div class="reveal">
+      <span class="badge badge-purple">10 Capabilities</span>
+      <h2 style="font-size:2rem;font-weight:800;margin:16px 0 8px">One Postgres. Ten Superpowers.</h2>
+      <p style="color:var(--fg2)">Click any card to jump to the interactive deep-dive.</p>
+    </div>
+    <div class="concepts-grid">
+
+      <a href="#dd-fts" class="concept-card reveal" style="--card-accent:#3b82f6">
+        <div class="card-icon" style="background:rgba(59,130,246,.12)">🔍</div>
+        <h3>Full-Text Search</h3>
+        <div class="replaces">Replaces <strong>Elasticsearch</strong></div>
+        <p>Native <code>tsvector</code> + <code>tsquery</code> with BM25 ranking, highlighted snippets, and trigram fuzzy matching via <code>pg_trgm</code>.</p>
+        <div class="algo-match">✅ <strong>Same algorithm:</strong> Both use BM25 (Best Matching 25) for relevance scoring</div>
+      </a>
+
+      <a href="#dd-vector" class="concept-card reveal" style="--card-accent:#8b5cf6">
+        <div class="card-icon" style="background:rgba(139,92,246,.12)">🧠</div>
+        <h3>Vector Similarity Search</h3>
+        <div class="replaces">Replaces <strong>Pinecone / Qdrant</strong></div>
+        <p><code>pgvector</code> with HNSW indexes for approximate nearest neighbor search. <code>pgvectorscale</code> adds DiskANN — 28× lower latency.</p>
+        <div class="algo-match">✅ <strong>Same algorithm:</strong> Both use HNSW / DiskANN for ANN search</div>
+      </a>
+
+      <a href="#dd-ts" class="concept-card reveal" style="--card-accent:#f59e0b">
+        <div class="card-icon" style="background:rgba(245,158,11,.12)">📊</div>
+        <h3>Time-Series Data</h3>
+        <div class="replaces">Replaces <strong>InfluxDB</strong></div>
+        <p>Declarative partitioning by time range + BRIN indexes. Partition pruning skips irrelevant months. <code>date_trunc()</code> for aggregation.</p>
+        <div class="algo-match">✅ <strong>Same algorithm:</strong> Both use time-range partitioning</div>
+      </a>
+
+      <a href="#dd-cache" class="concept-card reveal" style="--card-accent:#ef4444">
+        <div class="card-icon" style="background:rgba(239,68,68,.12)">⚡</div>
+        <h3>Caching (Key-Value)</h3>
+        <div class="replaces">Replaces <strong>Redis</strong></div>
+        <p><code>UNLOGGED</code> tables skip WAL writes — 2-5× faster than regular tables. Same crash semantics as Redis. Supports TTL via scheduled cleanup.</p>
+        <div class="algo-match">✅ <strong>Same guarantee:</strong> Both use in-memory storage with same durability</div>
+      </a>
+
+      <a href="#dd-doc" class="concept-card reveal" style="--card-accent:#22c55e">
+        <div class="card-icon" style="background:rgba(34,197,94,.12)">📄</div>
+        <h3>Document Store</h3>
+        <div class="replaces">Replaces <strong>MongoDB</strong></div>
+        <p><code>JSONB</code> with GIN indexes. Schema-free documents, containment queries (<code>@></code>), merge updates (<code>||</code>), plus SQL JOINs and ACID transactions.</p>
+        <div class="algo-match">✅ <strong>Same approach:</strong> Both use decomposed binary format with document indexing</div>
+      </a>
+
+      <a href="#dd-geo" class="concept-card reveal" style="--card-accent:#06b6d4">
+        <div class="card-icon" style="background:rgba(6,182,212,.12)">🌍</div>
+        <h3>Geospatial / GIS</h3>
+        <div class="replaces">Replaces <strong>Specialized GIS DBs</strong></div>
+        <p><code>PostGIS</code> — industry standard since 2001. Geography types, spatial indexes (GiST), proximity queries, routing, raster analysis.</p>
+        <div class="algo-match">✅ <strong>Industry standard:</strong> PostGIS IS the gold standard for geospatial</div>
+      </a>
+
+      <a href="#dd-queue" class="concept-card reveal" style="--card-accent:#e11d48">
+        <div class="card-icon" style="background:rgba(225,29,72,.12)">📬</div>
+        <h3>Message Queues</h3>
+        <div class="replaces">Replaces <strong>Kafka / RabbitMQ / SQS</strong></div>
+        <p><code>pgmq</code> extension + <code>SKIP LOCKED</code> for reliable task queues with visibility timeout, dead-letter support, and exactly-once delivery.</p>
+        <div class="algo-match">✅ <strong>Same pattern:</strong> Visibility timeout + at-least-once delivery like SQS</div>
+      </a>
+
+      <a href="#dd-cron" class="concept-card reveal" style="--card-accent:#d97706">
+        <div class="card-icon" style="background:rgba(217,119,6,.12)">⏰</div>
+        <h3>Cron / Scheduled Jobs</h3>
+        <div class="replaces">Replaces <strong>External cron / Airflow</strong></div>
+        <p><code>pg_cron</code> runs scheduled SQL directly inside Postgres. No external scheduler, no missed jobs, no coordination overhead.</p>
+        <div class="algo-match">✅ <strong>Same scheduling:</strong> Cron syntax, running inside the database</div>
+      </a>
+
+      <a href="#dd-graph" class="concept-card reveal" style="--card-accent:#7c3aed">
+        <div class="card-icon" style="background:rgba(124,58,237,.12)">🕸️</div>
+        <h3>Graph Traversal</h3>
+        <div class="replaces">Replaces <strong>Neo4j</strong></div>
+        <p>Recursive CTEs traverse org charts, social graphs, and dependency trees. <code>Apache AGE</code> adds Cypher query language support.</p>
+        <div class="algo-match">✅ <strong>Same traversal:</strong> BFS / DFS via recursive WITH queries</div>
+      </a>
+
+      <a href="#dd-hybrid" class="concept-card reveal" style="--card-accent:#0891b2">
+        <div class="card-icon" style="background:rgba(8,145,178,.12)">🔗</div>
+        <h3>Hybrid Search</h3>
+        <div class="replaces">Replaces <strong>ES + Pinecone pipeline</strong></div>
+        <p>Combine BM25 keyword search + vector similarity in a single query using Reciprocal Rank Fusion. No multi-service orchestration.</p>
+        <div class="algo-match">✅ <strong>Same fusion:</strong> RRF combines lexical + semantic ranking in one query</div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     DEEP DIVES
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="deep-dives">
+
+<!-- ── 1. FULL-TEXT SEARCH ─────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-fts">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(59,130,246,.12)">🔍</div>
+      <div>
+        <h2>Full-Text Search</h2>
+        <div class="dd-replaces">Replaces <strong>Elasticsearch</strong> · Algorithm: <strong style="color:var(--accent);text-decoration:none">BM25</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Elasticsearch (separate cluster)</div>
+        <div class="dd-panel-body"><span class="cmt">// Elasticsearch query DSL</span>
+<span class="kw">POST</span> /articles/_search
+{
+  <span class="str">"query"</span>: {
+    <span class="str">"multi_match"</span>: {
+      <span class="str">"query"</span>: <span class="str">"postgresql features"</span>,
+      <span class="str">"fields"</span>: [<span class="str">"title^2"</span>, <span class="str">"body"</span>],
+      <span class="str">"type"</span>: <span class="str">"best_fields"</span>
+    }
+  },
+  <span class="str">"highlight"</span>: {
+    <span class="str">"fields"</span>: { <span class="str">"body"</span>: {} }
+  }
+}
+
+<span class="cmt">// Requires: separate ES cluster</span>
+<span class="cmt">// Requires: data sync pipeline</span>
+<span class="cmt">// Requires: index management</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL (same database)</div>
+        <div class="dd-panel-body"><span class="cmt">-- Same BM25 ranking, zero extra infra</span>
+<span class="kw">SELECT</span> title,
+  <span class="fn">ts_headline</span>(<span class="str">'english'</span>, body,
+    <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>,
+      <span class="str">'postgresql features'</span>),
+    <span class="str">'StartSel=&lt;b&gt;, StopSel=&lt;/b&gt;'</span>
+  ) <span class="kw">AS</span> headline,
+  <span class="fn">ts_rank</span>(tsv, q) <span class="kw">AS</span> rank
+<span class="kw">FROM</span> articles,
+  <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>,
+    <span class="str">'postgresql features'</span>) q
+<span class="kw">WHERE</span> tsv <span class="op">@@</span> q
+<span class="kw">ORDER BY</span> rank <span class="kw">DESC</span>;
+
+<span class="cmt">-- Fuzzy search (typo-tolerant)</span>
+<span class="kw">SELECT</span> title, <span class="fn">similarity</span>(title, <span class="str">'postgre'</span>)
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> <span class="fn">similarity</span>(title, <span class="str">'postgre'</span>) <span class="op">></span> <span class="num">0.3</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>📖 BM25 Ranking</h4>
+        <p><code>ts_rank()</code> uses TF-IDF scoring — the <span class="highlight">same BM25 algorithm</span> that Elasticsearch/Lucene uses for relevance. Term frequency × inverse document frequency × length normalization.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📑 GIN Inverted Index</h4>
+        <p>The GIN index on <code>tsvector</code> is structurally identical to Lucene's inverted index. It maps lexemes → row pointers for O(1) lookup.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔤 Trigram Fuzzy Match</h4>
+        <p><code>pg_trgm</code> splits text into 3-character grams and computes overlap. "postgre" has 80% overlap with "PostgreSQL" — perfect for typo tolerance, like ES's <code>fuzziness</code>.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>⚡ Generated Column</h4>
+        <p>The <code>tsv</code> column is <code>GENERATED ALWAYS</code> — Postgres auto-updates the tsvector on every INSERT/UPDATE. No external sync pipeline needed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 2. VECTOR SEARCH ───────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-vector">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(139,92,246,.12)">🧠</div>
+      <div>
+        <h2>Vector Similarity Search</h2>
+        <div class="dd-replaces">Replaces <strong>Pinecone / Qdrant</strong> · Algorithm: <strong style="color:var(--accent2);text-decoration:none">HNSW</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Pinecone (managed SaaS)</div>
+        <div class="dd-panel-body"><span class="cmt"># Pinecone Python client</span>
+<span class="kw">import</span> pinecone
+
+pinecone.<span class="fn">init</span>(api_key=<span class="str">"..."</span>)
+index = pinecone.<span class="fn">Index</span>(<span class="str">"my-index"</span>)
+
+<span class="cmt"># Upsert vectors</span>
+index.<span class="fn">upsert</span>(vectors=[
+  (<span class="str">"id-1"</span>, [<span class="num">0.1</span>, <span class="num">0.2</span>, ...], {<span class="str">"title"</span>: <span class="str">"..."</span>})
+])
+
+<span class="cmt"># Query</span>
+results = index.<span class="fn">query</span>(
+  vector=[<span class="num">0.3</span>, <span class="num">0.1</span>, ...],
+  top_k=<span class="num">5</span>
+)
+
+<span class="cmt"># Cost: $70/mo per 1M vectors</span>
+<span class="cmt"># Requires: separate service</span>
+<span class="cmt"># Requires: data sync</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL + pgvector</div>
+        <div class="dd-panel-body"><span class="cmt">-- Same HNSW algorithm, in your DB</span>
+<span class="kw">CREATE EXTENSION</span> vector;
+
+<span class="cmt">-- Store embeddings alongside data</span>
+<span class="kw">CREATE TABLE</span> docs (
+  id <span class="kw">BIGSERIAL PRIMARY KEY</span>,
+  title <span class="kw">TEXT</span>,
+  embedding <span class="fn">vector</span>(<span class="num">384</span>)  <span class="cmt">-- 384-dim</span>
+);
+
+<span class="cmt">-- HNSW index (same algo as Pinecone)</span>
+<span class="kw">CREATE INDEX ON</span> docs
+  <span class="kw">USING</span> <span class="fn">hnsw</span>(embedding <span class="fn">vector_cosine_ops</span>);
+
+<span class="cmt">-- Cosine similarity search</span>
+<span class="kw">SELECT</span> title,
+  <span class="num">1</span> <span class="op">-</span> (embedding <span class="op"><=></span> <span class="str">'[0.3,0.1,...]'</span>) <span class="kw">AS</span> sim
+<span class="kw">FROM</span> docs
+<span class="kw">ORDER BY</span> embedding <span class="op"><=></span> <span class="str">'[0.3,0.1,...]'</span>
+<span class="kw">LIMIT</span> <span class="num">5</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🔗 HNSW Algorithm</h4>
+        <p>Hierarchical Navigable Small World — builds a multi-layer graph where each layer is a "skip list" for fast traversal. <span class="highlight">Same algorithm in Pinecone, Qdrant, Weaviate</span>, and now pgvector.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>💿 DiskANN (pgvectorscale)</h4>
+        <p>Microsoft's DiskANN algorithm stores the graph on SSD instead of RAM. pgvectorscale brings this to Postgres: <span class="highlight">28× lower p95 latency, 75% less cost</span> vs Pinecone.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📐 Distance Operators</h4>
+        <p><code>&lt;-&gt;</code> L2 distance · <code>&lt;#&gt;</code> inner product · <code>&lt;=&gt;</code> cosine distance. Pick the right one for your embedding model.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔄 pgai Auto-Sync</h4>
+        <p>The <code>pgai</code> extension auto-generates embeddings as data changes — no external pipeline needed. Your vectors are always in sync with your data.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 3. TIME-SERIES ─────────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-ts">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(245,158,11,.12)">📊</div>
+      <div>
+        <h2>Time-Series Analytics</h2>
+        <div class="dd-replaces">Replaces <strong>InfluxDB</strong> · Technique: <strong style="color:var(--orange);text-decoration:none">Partition Pruning + BRIN</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ InfluxDB (separate service)</div>
+        <div class="dd-panel-body"><span class="cmt">// InfluxDB Line Protocol</span>
+temperature,sensor=s1,loc=wh-A value=<span class="num">23.5</span>
+temperature,sensor=s1,loc=wh-A value=<span class="num">24.1</span>
+
+<span class="cmt">// InfluxQL aggregation</span>
+<span class="kw">SELECT</span> <span class="fn">MEAN</span>(value)
+<span class="kw">FROM</span> temperature
+<span class="kw">WHERE</span> sensor = <span class="str">'s1'</span>
+  <span class="kw">AND</span> time <span class="op">></span> <span class="fn">now</span>() - <span class="num">7</span>d
+<span class="kw">GROUP BY</span> <span class="fn">time</span>(<span class="num">1</span>h)
+
+<span class="cmt">// Requires: separate InfluxDB cluster</span>
+<span class="cmt">// Requires: Telegraf for ingestion</span>
+<span class="cmt">// Limited: no JOINs with app data</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL (partitioned tables)</div>
+        <div class="dd-panel-body"><span class="cmt">-- Time-partitioned table</span>
+<span class="kw">CREATE TABLE</span> sensor_readings (
+  id <span class="kw">BIGSERIAL</span>,
+  sensor_id <span class="kw">VARCHAR</span>(<span class="num">100</span>),
+  value <span class="kw">DOUBLE PRECISION</span>,
+  recorded_at <span class="kw">TIMESTAMPTZ</span>,
+  <span class="kw">PRIMARY KEY</span> (recorded_at, id)
+) <span class="kw">PARTITION BY RANGE</span> (recorded_at);
+
+<span class="cmt">-- Monthly partitions</span>
+<span class="kw">CREATE TABLE</span> readings_2026_02
+  <span class="kw">PARTITION OF</span> sensor_readings
+  <span class="kw">FOR VALUES FROM</span> (<span class="str">'2026-02-01'</span>)
+  <span class="kw">TO</span> (<span class="str">'2026-03-01'</span>);
+
+<span class="cmt">-- BRIN index (1000× smaller than B-tree)</span>
+<span class="kw">CREATE INDEX ON</span> sensor_readings
+  <span class="kw">USING</span> <span class="fn">brin</span>(recorded_at);
+
+<span class="cmt">-- Same aggregation as InfluxDB</span>
+<span class="kw">SELECT</span> <span class="fn">date_trunc</span>(<span class="str">'hour'</span>, recorded_at),
+  <span class="fn">AVG</span>(value), <span class="fn">MIN</span>(value), <span class="fn">MAX</span>(value)
+<span class="kw">FROM</span> sensor_readings
+<span class="kw">WHERE</span> sensor_id = <span class="str">'s1'</span>
+  <span class="kw">AND</span> recorded_at <span class="op">></span> <span class="fn">NOW</span>() - <span class="str">'7 days'</span>::interval
+<span class="kw">GROUP BY</span> <span class="num">1</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>📦 Partition Pruning</h4>
+        <p>Query for March 2026 data? Postgres <span class="highlight">only scans the March partition</span> — all other months are skipped entirely. Check with <code>EXPLAIN ANALYZE</code>.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📏 BRIN Index</h4>
+        <p>Block Range INdex stores min/max per block of pages. For time-ordered inserts, each block covers a contiguous time range. <span class="highlight">~1000× smaller than B-tree</span> with excellent query performance.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🗑️ Easy Retention</h4>
+        <p><code>DROP TABLE readings_2025_01</code> — instant. No slow DELETE + VACUUM cycle. Just like InfluxDB's retention policies, but simpler.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔗 JOIN Everything</h4>
+        <p>Unlike InfluxDB, you can JOIN sensor readings with your relational data: users, devices, locations — all in one query.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 4. CACHING ─────────────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-cache">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(239,68,68,.12)">⚡</div>
+      <div>
+        <h2>Caching (Key-Value Store)</h2>
+        <div class="dd-replaces">Replaces <strong>Redis</strong> · Technique: <strong style="color:var(--red);text-decoration:none">UNLOGGED Tables</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Redis (separate server)</div>
+        <div class="dd-panel-body"><span class="cmt"># Redis commands</span>
+<span class="kw">SET</span> session:user-1 <span class="str">'{"role":"admin"}'</span> <span class="kw">EX</span> <span class="num">3600</span>
+<span class="kw">GET</span> session:user-1
+<span class="kw">DEL</span> session:user-1
+
+<span class="cmt"># Check TTL</span>
+<span class="kw">TTL</span> session:user-1
+
+<span class="cmt"># Requires: separate Redis server</span>
+<span class="cmt"># Requires: client library</span>
+<span class="cmt"># Limited: no SQL queries on values</span>
+<span class="cmt"># Limited: no JOINs</span>
+<span class="cmt"># Memory: entire dataset must fit in RAM</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL UNLOGGED table</div>
+        <div class="dd-panel-body"><span class="cmt">-- UNLOGGED = skip WAL = Redis speed</span>
+<span class="kw">CREATE UNLOGGED TABLE</span> cache (
+  key   <span class="kw">VARCHAR</span>(<span class="num">255</span>) <span class="kw">PRIMARY KEY</span>,
+  value <span class="kw">JSONB</span> <span class="kw">NOT NULL</span>,
+  expires_at <span class="kw">TIMESTAMPTZ</span>
+);
+
+<span class="cmt">-- SET with TTL</span>
+<span class="kw">INSERT INTO</span> cache (key, value, expires_at)
+<span class="kw">VALUES</span> (<span class="str">'session:user-1'</span>,
+  <span class="str">'{"role":"admin"}'</span>::jsonb,
+  <span class="fn">NOW</span>() + <span class="str">'1 hour'</span>::interval)
+<span class="kw">ON CONFLICT</span> (key) <span class="kw">DO UPDATE SET</span>
+  value = <span class="kw">EXCLUDED</span>.value;
+
+<span class="cmt">-- GET (respecting TTL)</span>
+<span class="kw">SELECT</span> value <span class="kw">FROM</span> cache
+<span class="kw">WHERE</span> key = <span class="str">'session:user-1'</span>
+  <span class="kw">AND</span> expires_at <span class="op">></span> <span class="fn">NOW</span>();
+
+<span class="cmt">-- Bonus: query INSIDE the JSON</span>
+<span class="kw">SELECT</span> key <span class="kw">FROM</span> cache
+<span class="kw">WHERE</span> value<span class="op">->></span><span class="str">'role'</span> = <span class="str">'admin'</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>📝 What is WAL?</h4>
+        <p>Write-Ahead Log ensures durability — every change is written to the log before being applied. <code>UNLOGGED</code> tables skip this entirely, <span class="highlight">making writes 2-5× faster</span>.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>💥 Crash Behavior</h4>
+        <p>Data in UNLOGGED tables is lost on crash but survives normal restarts. This is <span class="highlight">the same default guarantee as Redis</span> (without AOF enabled).</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔍 Query Advantage</h4>
+        <p>Unlike Redis, you can run SQL on your cache: filter by JSON fields, aggregate, JOIN with other tables. Redis can't do <code>SELECT * WHERE value->>'role' = 'admin'</code>.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>⏱️ When Redis Wins</h4>
+        <p>Redis: ~0.1ms latency. Postgres UNLOGGED: ~1-5ms. If you need sub-millisecond, Pub/Sub, or Lua scripting — still use Redis.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 5. DOCUMENTS ───────────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-doc">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(34,197,94,.12)">📄</div>
+      <div>
+        <h2>Document Store</h2>
+        <div class="dd-replaces">Replaces <strong>MongoDB</strong> · Type: <strong style="color:var(--green);text-decoration:none">JSONB + GIN Index</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ MongoDB (separate cluster)</div>
+        <div class="dd-panel-body"><span class="cmt">// MongoDB operations</span>
+db.users.<span class="fn">insertOne</span>({
+  name: <span class="str">"Alice"</span>,
+  address: { city: <span class="str">"New York"</span> }
+});
+
+db.users.<span class="fn">find</span>({
+  <span class="str">"address.city"</span>: <span class="str">"New York"</span>
+});
+
+db.users.<span class="fn">updateOne</span>(
+  { _id: ObjectId(<span class="str">"..."</span>) },
+  { <span class="op">$set</span>: { age: <span class="num">31</span> } }
+);
+
+<span class="cmt">// Requires: separate MongoDB cluster</span>
+<span class="cmt">// Limited: no real JOINs</span>
+<span class="cmt">// Limited: no cross-doc transactions</span>
+<span class="cmt">//   (multi-doc txns are slow)</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL JSONB</div>
+        <div class="dd-panel-body"><span class="cmt">-- Schema-free documents in Postgres</span>
+<span class="kw">CREATE TABLE</span> documents (
+  id <span class="kw">BIGSERIAL PRIMARY KEY</span>,
+  collection <span class="kw">VARCHAR</span>(<span class="num">100</span>),
+  data <span class="kw">JSONB</span>
+);
+
+<span class="cmt">-- GIN indexes ALL keys automatically</span>
+<span class="kw">CREATE INDEX ON</span> documents <span class="kw">USING</span> <span class="fn">gin</span>(data);
+
+<span class="cmt">-- Insert (like insertOne)</span>
+<span class="kw">INSERT INTO</span> documents (collection, data)
+<span class="kw">VALUES</span> (<span class="str">'users'</span>, <span class="str">'{"name":"Alice",
+  "address":{"city":"New York"}}'</span>);
+
+<span class="cmt">-- Query (like find) — uses GIN index</span>
+<span class="kw">SELECT</span> data <span class="kw">FROM</span> documents
+<span class="kw">WHERE</span> data <span class="op">@></span> <span class="str">'{"address":{"city":"New York"}}'</span>;
+
+<span class="cmt">-- Update (like $set) — merge JSON</span>
+<span class="kw">UPDATE</span> documents
+<span class="kw">SET</span> data = data <span class="op">||</span> <span class="str">'{"age":31}'</span>::jsonb
+<span class="kw">WHERE</span> id = <span class="num">1</span>;
+
+<span class="cmt">-- JOIN docs with relational tables!</span>
+<span class="kw">SELECT</span> d.data<span class="op">->></span><span class="str">'name'</span>, o.total
+<span class="kw">FROM</span> documents d <span class="kw">JOIN</span> orders o
+  <span class="kw">ON</span> d.data<span class="op">->></span><span class="str">'name'</span> = o.customer;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🗂️ JSONB vs BSON</h4>
+        <p>JSONB stores JSON in a decomposed binary format. Unlike MongoDB's BSON, it's optimized for reads — <span class="highlight">any key can be accessed in O(1)</span> without parsing the entire document.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📇 GIN = Automatic Indexing</h4>
+        <p>One <code>CREATE INDEX USING gin(data)</code> indexes <span class="highlight">every key and value</span> in the JSON. MongoDB requires you to define indexes per field manually.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔗 JOINs + Transactions</h4>
+        <p>The killer advantage: JOIN your documents with relational tables. Full ACID transactions across any number of documents. MongoDB's multi-document transactions are limited and slow.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🧰 Rich Operators</h4>
+        <p><code>@></code> containment · <code>||</code> merge · <code>->></code> extract text · <code>#>></code> nested path · <code>jsonb_path_query</code> SQL/JSON path. More powerful than MongoDB's query language.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 6. GEOSPATIAL ──────────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-geo">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(6,182,212,.12)">🌍</div>
+      <div>
+        <h2>Geospatial / GIS</h2>
+        <div class="dd-replaces">Replaces <strong>Specialized GIS DBs</strong> · Extension: <strong style="color:var(--accent3);text-decoration:none">PostGIS</strong> (since 2001)</div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Specialized GIS Database</div>
+        <div class="dd-panel-body"><span class="cmt">// Typical GIS workflow</span>
+<span class="cmt">// 1. Run separate GIS server</span>
+<span class="cmt">// 2. Import shapefiles</span>
+<span class="cmt">// 3. Use proprietary query language</span>
+<span class="cmt">// 4. Sync data with app database</span>
+<span class="cmt">// 5. Pay $$$ for licenses</span>
+
+<span class="cmt">// Or: use Google Maps Platform</span>
+<span class="cmt">//   $5/1000 requests for distance API</span>
+<span class="cmt">//   $7/1000 requests for geocoding</span>
+<span class="cmt">//   $$ adds up fast at scale</span>
+
+<span class="cmt">// Or: use AWS Location Service</span>
+<span class="cmt">//   $0.04/1000 routing requests</span>
+<span class="cmt">//   another service to manage</span>
+<span class="cmt">//   data lives in yet another place</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL + PostGIS</div>
+        <div class="dd-panel-body"><span class="kw">CREATE EXTENSION</span> postgis;
+
+<span class="cmt">-- Store GPS coordinates (WGS84)</span>
+<span class="kw">CREATE TABLE</span> places (
+  id <span class="kw">BIGSERIAL PRIMARY KEY</span>,
+  name <span class="kw">TEXT</span>,
+  coords <span class="fn">geography</span>(<span class="str">POINT</span>, <span class="num">4326</span>)
+);
+
+<span class="cmt">-- Spatial index (GiST R-tree)</span>
+<span class="kw">CREATE INDEX ON</span> places
+  <span class="kw">USING</span> <span class="fn">gist</span>(coords);
+
+<span class="cmt">-- Find places within 50km of NYC</span>
+<span class="kw">SELECT</span> name,
+  <span class="fn">ST_Distance</span>(coords,
+    <span class="fn">ST_MakePoint</span>(<span class="num">-74.006</span>, <span class="num">40.713</span>)::geography
+  ) / <span class="num">1000</span> <span class="kw">AS</span> km
+<span class="kw">FROM</span> places
+<span class="kw">WHERE</span> <span class="fn">ST_DWithin</span>(coords,
+  <span class="fn">ST_MakePoint</span>(<span class="num">-74.006</span>, <span class="num">40.713</span>)::geography,
+  <span class="num">50000</span>)  <span class="cmt">-- 50km in meters</span>
+<span class="kw">ORDER BY</span> km;
+
+<span class="cmt">-- Works on a SPHERE (not flat plane)</span>
+<span class="cmt">-- Accurate anywhere on Earth</span></div>
+      </div>
+    </div>
+
+    <!-- Interactive map demo -->
+    <div class="playground reveal" style="margin-top:32px">
+      <div class="playground-tabs">
+        <button class="playground-tab active" onclick="showTab(this,'geo-proximity')">Proximity Search</button>
+        <button class="playground-tab" onclick="showTab(this,'geo-contain')">Containment</button>
+        <button class="playground-tab" onclick="showTab(this,'geo-distance')">Distance Matrix</button>
+      </div>
+      <div class="playground-content active" id="geo-proximity">
+        <div class="playground-sql"><span class="cmt">-- "Find all landmarks within 100km of London"</span>
+<span class="kw">SELECT</span> name,
+  <span class="fn">ROUND</span>(<span class="fn">ST_Distance</span>(coordinates,
+    <span class="fn">ST_MakePoint</span>(<span class="num">-0.1278</span>, <span class="num">51.5074</span>)::geography
+  )::numeric / <span class="num">1000</span>, <span class="num">1</span>) <span class="kw">AS</span> distance_km
+<span class="kw">FROM</span> geo_locations
+<span class="kw">WHERE</span> <span class="fn">ST_DWithin</span>(coordinates,
+  <span class="fn">ST_MakePoint</span>(<span class="num">-0.1278</span>, <span class="num">51.5074</span>)::geography,
+  <span class="num">100000</span>)
+<span class="kw">ORDER BY</span> distance_km;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  name     | distance_km
+-----------+------------
+ Big Ben   |        0.7</pre>
+        </div>
+        <div class="playground-note">💡 ST_DWithin uses the GiST spatial index — it doesn't scan the whole table.</div>
+      </div>
+      <div class="playground-content" id="geo-contain">
+        <div class="playground-sql"><span class="cmt">-- "Is this point inside a given polygon?"</span>
+<span class="kw">SELECT</span> <span class="fn">ST_Contains</span>(
+  <span class="fn">ST_GeomFromText</span>(<span class="str">'POLYGON((-74.1 40.6,
+    -73.9 40.6, -73.9 40.8,
+    -74.1 40.8, -74.1 40.6))'</span>),
+  <span class="fn">ST_MakePoint</span>(<span class="num">-74.0445</span>, <span class="num">40.6892</span>)
+) <span class="kw">AS</span> inside_manhattan;
+
+<span class="cmt">-- Is the Statue of Liberty in this box?</span></div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  inside_manhattan
+ -----------------
+  true</pre>
+        </div>
+      </div>
+      <div class="playground-content" id="geo-distance">
+        <div class="playground-sql"><span class="cmt">-- Distance matrix between all landmarks</span>
+<span class="kw">SELECT</span>
+  a.name <span class="kw">AS</span> from_place,
+  b.name <span class="kw">AS</span> to_place,
+  <span class="fn">ROUND</span>(<span class="fn">ST_Distance</span>(
+    a.coordinates, b.coordinates
+  )::numeric / <span class="num">1000</span>, <span class="num">0</span>) <span class="kw">AS</span> km
+<span class="kw">FROM</span> geo_locations a
+<span class="kw">CROSS JOIN</span> geo_locations b
+<span class="kw">WHERE</span> a.id <span class="op"><</span> b.id
+<span class="kw">ORDER BY</span> km
+<span class="kw">LIMIT</span> <span class="num">5</span>;</div>
+        <div class="playground-result">
+          <h5>Result (closest pairs)</h5>
+          <pre>  from         | to             | km
+ --------------+----------------+------
+  Eiffel Tower | Big Ben        |  341
+  Colosseum    | Eiffel Tower   | 1106
+  Big Ben      | Colosseum      | 1435
+  Taj Mahal    | Tokyo Tower    | 5849
+  Statue of L. | Eiffel Tower   | 5837</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🌐 Geography vs Geometry</h4>
+        <p><code>geography</code> type operates on a sphere — <span class="highlight">accurate anywhere on Earth</span>. <code>geometry</code> operates on a flat plane — faster but distorts at scale. Use geography for GPS/maps.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🌳 GiST R-tree Index</h4>
+        <p>GiST index implements an R-tree — divides space into bounding rectangles. <code>ST_DWithin</code> uses this to find nearby points without scanning every row.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🗺️ SRID 4326</h4>
+        <p>Spatial Reference ID 4326 = WGS84 = the coordinate system GPS uses. When you store <code>geography(POINT, 4326)</code>, you're using the same datum as Google Maps.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📅 Since 2001</h4>
+        <p>PostGIS isn't a newcomer — it's been the <span class="highlight">industry standard for geospatial</span> for 25 years. Used by governments, NASA, OSM, and thousands of companies.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 7. MESSAGE QUEUES ──────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-queue">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(225,29,72,.12)">📬</div>
+      <div>
+        <h2>Message Queues</h2>
+        <div class="dd-replaces">Replaces <strong>Kafka / RabbitMQ / SQS</strong> · Pattern: <strong style="color:#e11d48;text-decoration:none">SKIP LOCKED + pgmq</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Kafka / RabbitMQ (separate cluster)</div>
+        <div class="dd-panel-body"><span class="cmt"># RabbitMQ — separate service</span>
+<span class="kw">import</span> pika
+
+connection = pika.<span class="fn">BlockingConnection</span>(
+  pika.<span class="fn">ConnectionParameters</span>(<span class="str">'rabbit-host'</span>))
+channel = connection.<span class="fn">channel</span>()
+channel.<span class="fn">queue_declare</span>(queue=<span class="str">'tasks'</span>)
+
+<span class="cmt"># Publish</span>
+channel.<span class="fn">basic_publish</span>(
+  exchange=<span class="str">''</span>,
+  routing_key=<span class="str">'tasks'</span>,
+  body=<span class="str">'{"job":"send_email","to":"a@b.com"}'</span>
+)
+
+<span class="cmt"># Consume</span>
+channel.<span class="fn">basic_consume</span>(
+  queue=<span class="str">'tasks'</span>,
+  on_message_callback=process_msg
+)
+
+<span class="cmt">// Requires: separate broker cluster</span>
+<span class="cmt">// Requires: ZooKeeper (Kafka) or Erlang</span>
+<span class="cmt">// Requires: monitoring (lag, DLQ, etc.)</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL pgmq + SKIP LOCKED</div>
+        <div class="dd-panel-body"><span class="cmt">-- pgmq: lightweight message queue</span>
+<span class="kw">CREATE EXTENSION</span> pgmq;
+<span class="kw">SELECT</span> pgmq.<span class="fn">create</span>(<span class="str">'task_queue'</span>);
+
+<span class="cmt">-- Send a message</span>
+<span class="kw">SELECT</span> pgmq.<span class="fn">send</span>(<span class="str">'task_queue'</span>,
+  <span class="str">'{"job":"send_email",
+    "to":"a@b.com"}'</span>::jsonb);
+
+<span class="cmt">-- Read with 30s visibility timeout</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> pgmq.<span class="fn">read</span>(
+  <span class="str">'task_queue'</span>, <span class="num">30</span>, <span class="num">1</span>);
+
+<span class="cmt">-- Delete after processing</span>
+<span class="kw">SELECT</span> pgmq.<span class="fn">delete</span>(<span class="str">'task_queue'</span>, <span class="num">1</span>);
+
+<span class="cmt">-- OR: raw SKIP LOCKED pattern</span>
+<span class="kw">UPDATE</span> jobs <span class="kw">SET</span> status = <span class="str">'processing'</span>
+<span class="kw">WHERE</span> id = (
+  <span class="kw">SELECT</span> id <span class="kw">FROM</span> jobs
+  <span class="kw">WHERE</span> status = <span class="str">'pending'</span>
+  <span class="kw">ORDER BY</span> created_at
+  <span class="kw">FOR UPDATE SKIP LOCKED</span>
+  <span class="kw">LIMIT</span> <span class="num">1</span>
+) <span class="kw">RETURNING</span> *;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🔒 SKIP LOCKED</h4>
+        <p><code>FOR UPDATE SKIP LOCKED</code> is the secret weapon: multiple workers grab different rows <span class="highlight">without blocking each other</span>. It's the same pattern SQS uses for visibility timeout.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📦 pgmq Extension</h4>
+        <p>Built by Tembo, <code>pgmq</code> wraps SKIP LOCKED into a clean API: <code>send()</code>, <code>read()</code>, <code>delete()</code>, <code>archive()</code>. Supports visibility timeout, dead-letter queues, and message retention.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔄 Exactly-Once Processing</h4>
+        <p>Process message + update state in the <span class="highlight">same transaction</span>. No two-phase commit across services. If the transaction rolls back, the message reappears — automatic retry.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>⚡ When Kafka Wins</h4>
+        <p>Kafka excels at event streaming (millions of events/sec, multi-consumer replay). For task queues and job processing (most use cases), pgmq is simpler and sufficient.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 8. CRON / SCHEDULED JOBS ───────────────────────────────────────── -->
+<section class="deep-dive" id="dd-cron">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(217,119,6,.12)">⏰</div>
+      <div>
+        <h2>Cron / Scheduled Jobs</h2>
+        <div class="dd-replaces">Replaces <strong>External cron / Airflow</strong> · Extension: <strong style="color:var(--orange);text-decoration:none">pg_cron</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ External cron / Airflow (separate)</div>
+        <div class="dd-panel-body"><span class="cmt"># System crontab</span>
+<span class="num">0</span> * * * * /usr/bin/psql -c \
+  <span class="str">"DELETE FROM cache WHERE expires_at < NOW()"</span>
+
+<span class="cmt"># OR: Airflow DAG (Python)</span>
+<span class="kw">from</span> airflow <span class="kw">import</span> DAG
+
+<span class="kw">with</span> DAG(<span class="str">'cleanup'</span>,
+  schedule_interval=<span class="str">'0 * * * *'</span>) <span class="kw">as</span> dag:
+  cleanup_task = PostgresOperator(
+    task_id=<span class="str">'delete_expired'</span>,
+    sql=<span class="str">"DELETE FROM cache ..."</span>
+  )
+
+<span class="cmt">// Requires: cron daemon or Airflow cluster</span>
+<span class="cmt">// Problem: server reboot = missed jobs</span>
+<span class="cmt">// Problem: psql connection may fail</span>
+<span class="cmt">// Problem: no visibility/logging built-in</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL pg_cron</div>
+        <div class="dd-panel-body"><span class="cmt">-- pg_cron: cron scheduler inside Postgres</span>
+<span class="kw">CREATE EXTENSION</span> pg_cron;
+
+<span class="cmt">-- Expire cache entries every hour</span>
+<span class="kw">SELECT</span> cron.<span class="fn">schedule</span>(
+  <span class="str">'cleanup-cache'</span>,
+  <span class="str">'0 * * * *'</span>,
+  $$<span class="kw">DELETE FROM</span> cache
+    <span class="kw">WHERE</span> expires_at <span class="op">&lt;</span> <span class="fn">NOW</span>()$$
+);
+
+<span class="cmt">-- Refresh materialized view daily at 3am</span>
+<span class="kw">SELECT</span> cron.<span class="fn">schedule</span>(
+  <span class="str">'refresh-stats'</span>,
+  <span class="str">'0 3 * * *'</span>,
+  $$<span class="kw">REFRESH MATERIALIZED VIEW CONCURRENTLY</span>
+    daily_stats$$
+);
+
+<span class="cmt">-- Partition maintenance: create next month</span>
+<span class="kw">SELECT</span> cron.<span class="fn">schedule</span>(
+  <span class="str">'create-partition'</span>,
+  <span class="str">'0 0 25 * *'</span>,
+  $$<span class="kw">SELECT</span> create_next_partition()$$
+);
+
+<span class="cmt">-- View job history</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> cron.job_run_details
+<span class="kw">ORDER BY</span> end_time <span class="kw">DESC LIMIT</span> <span class="num">10</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🕐 Standard Cron Syntax</h4>
+        <p>Uses the <span class="highlight">exact same 5-field cron expression</span> you already know: minute, hour, day-of-month, month, day-of-week. No new DSL to learn.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📋 Built-in Job History</h4>
+        <p><code>cron.job_run_details</code> logs every execution: start time, end time, status, return message. <span class="highlight">No external log aggregation</span> needed.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔗 Transactional Jobs</h4>
+        <p>Jobs run as SQL inside Postgres — they participate in the same transaction guarantees. No external process that may crash between connecting and executing.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🧩 Common Use Cases</h4>
+        <p>Cache cleanup, partition management, materialized view refresh, stats aggregation, stale session purge — all handled without leaving the database.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 9. GRAPH TRAVERSAL ────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-graph">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(124,58,237,.12)">🕸️</div>
+      <div>
+        <h2>Graph Traversal</h2>
+        <div class="dd-replaces">Replaces <strong>Neo4j</strong> · Technique: <strong style="color:var(--accent2);text-decoration:none">Recursive CTEs + Apache AGE</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Neo4j (separate graph DB)</div>
+        <div class="dd-panel-body"><span class="cmt">// Cypher query language (Neo4j)</span>
+<span class="cmt">// Requires separate Neo4j server</span>
+
+<span class="cmt">// Find all reports under a manager</span>
+<span class="kw">MATCH</span> (mgr:Employee {name: <span class="str">"Alice"</span>})
+  <span class="op">-</span>[:MANAGES*]<span class="op">-></span>(report:Employee)
+<span class="kw">RETURN</span> report.name, length(p) <span class="kw">AS</span> depth
+
+<span class="cmt">// Shortest path between two people</span>
+<span class="kw">MATCH</span> p = shortestPath(
+  (a:Person {name:<span class="str">"Alice"</span>})
+  <span class="op">-</span>[:KNOWS*]<span class="op">-></span>
+  (b:Person {name:<span class="str">"Dave"</span>}))
+<span class="kw">RETURN</span> p
+
+<span class="cmt">// Requires: separate Neo4j cluster</span>
+<span class="cmt">// Requires: data sync from app DB</span>
+<span class="cmt">// Requires: Cypher query language</span>
+<span class="cmt">// Cost: Enterprise license for clustering</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL Recursive CTEs</div>
+        <div class="dd-panel-body"><span class="cmt">-- Org chart traversal (BFS)</span>
+<span class="kw">WITH RECURSIVE</span> org_tree <span class="kw">AS</span> (
+  <span class="cmt">-- Base case: start from root</span>
+  <span class="kw">SELECT</span> id, name, manager_id,
+    <span class="num">0</span> <span class="kw">AS</span> depth,
+    <span class="kw">ARRAY</span>[name] <span class="kw">AS</span> path
+  <span class="kw">FROM</span> employees
+  <span class="kw">WHERE</span> name = <span class="str">'Alice'</span>
+
+  <span class="kw">UNION ALL</span>
+
+  <span class="cmt">-- Recursive: find children</span>
+  <span class="kw">SELECT</span> e.id, e.name, e.manager_id,
+    t.depth + <span class="num">1</span>,
+    t.path <span class="op">||</span> e.name
+  <span class="kw">FROM</span> employees e
+  <span class="kw">JOIN</span> org_tree t <span class="kw">ON</span> e.manager_id = t.id
+)
+<span class="kw">SELECT</span> depth,
+  <span class="fn">repeat</span>(<span class="str">'  '</span>, depth) <span class="op">||</span> name <span class="kw">AS</span> tree,
+  path
+<span class="kw">FROM</span> org_tree
+<span class="kw">ORDER BY</span> path;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🔄 Recursive CTEs</h4>
+        <p><code>WITH RECURSIVE</code> starts from a base row and repeatedly joins to find children/parents. This is <span class="highlight">BFS/DFS traversal in pure SQL</span> — no graph database needed.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🧬 Cycle Detection</h4>
+        <p>Use <code>CYCLE id SET is_cycle USING path</code> (PG 14+) to automatically detect and break cycles. No infinite loops — Postgres handles it natively.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🔌 Apache AGE Extension</h4>
+        <p>Want Cypher syntax? <code>Apache AGE</code> adds a graph engine to Postgres. Write <code>MATCH (n)-[:KNOWS]->(m) RETURN m</code> — <span class="highlight">Cypher queries on your relational data</span>.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📊 Common Use Cases</h4>
+        <p>Org charts, bill of materials, category trees, social networks, dependency graphs, shortest path. Recursive CTEs handle 3-10 levels of depth efficiently.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 10. HYBRID SEARCH ──────────────────────────────────────────────── -->
+<section class="deep-dive" id="dd-hybrid">
+  <div class="container">
+    <div class="dd-header reveal">
+      <div class="dd-icon" style="background:rgba(8,145,178,.12)">🔗</div>
+      <div>
+        <h2>Hybrid Search</h2>
+        <div class="dd-replaces">Replaces <strong>ES + Pinecone pipeline</strong> · Technique: <strong style="color:var(--accent3);text-decoration:none">Reciprocal Rank Fusion</strong></div>
+      </div>
+    </div>
+
+    <div class="dd-split reveal">
+      <div class="dd-panel old">
+        <div class="dd-panel-header">❌ Elasticsearch + Pinecone (two services)</div>
+        <div class="dd-panel-body"><span class="cmt"># Multi-service hybrid search pipeline</span>
+
+<span class="cmt"># 1. BM25 keyword search (Elasticsearch)</span>
+es_results = es.<span class="fn">search</span>(index=<span class="str">"docs"</span>,
+  body={<span class="str">"query"</span>: {<span class="str">"match"</span>:
+    {<span class="str">"content"</span>: query_text}}})
+
+<span class="cmt"># 2. Vector search (Pinecone)</span>
+vec_results = pinecone_index.<span class="fn">query</span>(
+  vector=embed(query_text), top_k=<span class="num">20</span>)
+
+<span class="cmt"># 3. Merge results in app code (RRF)</span>
+<span class="kw">def</span> <span class="fn">rrf_merge</span>(es_hits, vec_hits, k=<span class="num">60</span>):
+  scores = {}
+  <span class="kw">for</span> rank, hit <span class="kw">in</span> enumerate(es_hits):
+    scores[hit.id] += <span class="num">1.0</span>/(k + rank)
+  <span class="kw">for</span> rank, hit <span class="kw">in</span> enumerate(vec_hits):
+    scores[hit.id] += <span class="num">1.0</span>/(k + rank)
+  <span class="kw">return</span> sorted(scores, key=scores.get)
+
+<span class="cmt"># Requires: 2 services + app-side merge</span>
+<span class="cmt"># Requires: data synced to both systems</span>
+<span class="cmt"># Latency: sum of both queries + network</span></div>
+      </div>
+      <div class="dd-panel new">
+        <div class="dd-panel-header">✅ PostgreSQL — single query RRF</div>
+        <div class="dd-panel-body"><span class="cmt">-- Hybrid search: BM25 + vectors in one query</span>
+<span class="kw">WITH</span> keyword_search <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> id, title,
+    <span class="fn">ROW_NUMBER</span>() <span class="kw">OVER</span>(
+      <span class="kw">ORDER BY</span> <span class="fn">ts_rank</span>(tsv,
+        <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>,
+          <span class="str">'postgres vector search'</span>)
+      ) <span class="kw">DESC</span>) <span class="kw">AS</span> rank_kw
+  <span class="kw">FROM</span> articles
+  <span class="kw">WHERE</span> tsv <span class="op">@@</span>
+    <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>,
+      <span class="str">'postgres vector search'</span>)
+  <span class="kw">LIMIT</span> <span class="num">20</span>
+),
+vector_search <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> id, title,
+    <span class="fn">ROW_NUMBER</span>() <span class="kw">OVER</span>(
+      <span class="kw">ORDER BY</span> embedding <span class="op"><=></span>
+        <span class="str">'[0.1,0.2,...]'</span>::vector
+    ) <span class="kw">AS</span> rank_vec
+  <span class="kw">FROM</span> articles
+  <span class="kw">ORDER BY</span> embedding <span class="op"><=></span>
+    <span class="str">'[0.1,0.2,...]'</span>::vector
+  <span class="kw">LIMIT</span> <span class="num">20</span>
+)
+<span class="cmt">-- Reciprocal Rank Fusion</span>
+<span class="kw">SELECT</span> <span class="fn">COALESCE</span>(k.title, v.title),
+  <span class="fn">COALESCE</span>(<span class="num">1.0</span>/(<span class="num">60</span>+k.rank_kw), <span class="num">0</span>)
+  + <span class="fn">COALESCE</span>(<span class="num">1.0</span>/(<span class="num">60</span>+v.rank_vec), <span class="num">0</span>)
+    <span class="kw">AS</span> rrf_score
+<span class="kw">FROM</span> keyword_search k
+<span class="kw">FULL OUTER JOIN</span> vector_search v
+  <span class="kw">ON</span> k.id = v.id
+<span class="kw">ORDER BY</span> rrf_score <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;</div>
+      </div>
+    </div>
+
+    <div class="dd-explanation reveal">
+      <div class="dd-fact">
+        <h4>🔀 Reciprocal Rank Fusion</h4>
+        <p>RRF combines rankings from multiple signals: <code>1/(k + rank)</code>. A document ranked #1 in both gets <span class="highlight">2× the score</span> of one ranked #1 in only one list. k=60 is the standard constant.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>⚡ Single Round Trip</h4>
+        <p>Both BM25 and vector search run <span class="highlight">in one SQL query</span> — one network round trip, one transaction. No cross-service coordination, no eventual consistency.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>🧲 Lexical + Semantic</h4>
+        <p>Keyword search finds exact matches ("PostgreSQL 16"); vector search finds semantic matches ("open-source relational database"). Together they cover both precision and recall.</p>
+      </div>
+      <div class="dd-fact">
+        <h4>📈 Why It Matters</h4>
+        <p>Studies show hybrid search outperforms either method alone by 5-15% on standard benchmarks. Going from two services to one query is a massive simplification.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /deep-dives -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="section" id="architecture" style="background:var(--bg2)">
+  <div class="container">
+    <div class="reveal">
+      <span class="badge badge-green">Architecture</span>
+      <h2 style="font-size:2rem;font-weight:800;margin:16px 0 8px">Before vs After</h2>
+      <p style="color:var(--fg2);margin-bottom:48px">From 11 services down to 2.</p>
+    </div>
+
+    <div class="dd-split reveal">
+      <div style="text-align:center">
+        <h3 style="color:var(--red);margin-bottom:20px">❌ Before: 11 Services</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center">
+          <div class="arch-box app" style="width:240px">Your App <span style="font-size:.75rem;opacity:.7">(Spring Boot)</span></div>
+          <div class="arch-arrow">↕</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">PostgreSQL</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Elasticsearch</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Redis</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">MongoDB</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Pinecone</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">InfluxDB</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Kafka</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Cron daemon</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Neo4j</div>
+            <div class="arch-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--red);font-size:.75rem">Search merger</div>
+          </div>
+          <p style="color:var(--fg3);font-size:.8rem;margin-top:16px">10 databases/services · 10 sync pipelines · 10 failure modes<br>10 sets of credentials · 10 monitoring dashboards</p>
+        </div>
+      </div>
+      <div style="text-align:center">
+        <h3 style="color:var(--green);margin-bottom:20px">✅ After: 2 Services</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center">
+          <div class="arch-box app" style="width:240px">Your App <span style="font-size:.75rem;opacity:.7">(Spring Boot)</span></div>
+          <div class="arch-arrow">↕</div>
+          <div class="arch-pg-box">
+            <h3>🐘 PostgreSQL 16</h3>
+            <div class="arch-ext">
+              <span>pgvector</span>
+              <span>tsvector</span>
+              <span>pg_trgm</span>
+              <span>PostGIS</span>
+              <span>JSONB</span>
+              <span>UNLOGGED</span>
+              <span>Partitions</span>
+              <span>pgmq</span>
+              <span>pg_cron</span>
+              <span>CTEs</span>
+              <span>RRF</span>
+            </div>
+          </div>
+          <p style="color:var(--fg3);font-size:.8rem;margin-top:16px">1 database · 0 sync pipelines · 1 failure mode<br>1 connection string · 1 backup strategy</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Savings callout -->
+    <div class="reveal" style="margin-top:40px;display:flex;justify-content:center">
+      <div style="display:inline-flex;align-items:center;gap:24px;background:linear-gradient(135deg,rgba(5,150,105,.06),rgba(37,99,235,.06));border:1px solid rgba(5,150,105,.2);border-radius:var(--radius-lg);padding:24px 40px">
+        <div style="text-align:center">
+          <div style="font-size:2.5rem;font-weight:800;color:var(--green);line-height:1">~75%</div>
+          <div style="font-size:.8rem;color:var(--fg2);margin-top:4px">infra cost savings</div>
+        </div>
+        <div style="width:1px;height:48px;background:var(--bg4)"></div>
+        <div style="text-align:center">
+          <div style="font-size:2.5rem;font-weight:800;color:var(--accent);line-height:1">~90%</div>
+          <div style="font-size:.8rem;color:var(--fg2);margin-top:4px">fewer failure modes</div>
+        </div>
+        <div style="width:1px;height:48px;background:var(--bg4)"></div>
+        <div style="text-align:center">
+          <div style="font-size:2.5rem;font-weight:800;color:var(--accent2);line-height:1">~80%</div>
+          <div style="font-size:.8rem;color:var(--fg2);margin-top:4px">less DevOps overhead</div>
+        </div>
+      </div>
+    </div>
+    <p class="reveal" style="text-align:center;font-size:.75rem;color:var(--fg3);margin-top:12px;font-style:italic">* Estimates for small-to-mid workloads. Actual savings vary by scale, provider, and usage patterns.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     INTERACTIVE PLAYGROUND
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="section" id="playground-section">
+  <div class="container">
+    <div class="reveal">
+      <span class="badge badge-purple">Interactive</span>
+      <h2 style="font-size:2rem;font-weight:800;margin:16px 0 8px">SQL Playground</h2>
+      <p style="color:var(--fg2);margin-bottom:12px">See the Postgres SQL for each use case — click the tabs to explore.</p>
+    </div>
+
+    <div class="playground reveal">
+      <div class="playground-tabs">
+        <button class="playground-tab active" onclick="showTab(this,'pg-fts')">🔍 Full-Text</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-vector')">🧠 Vector</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-ts')">📊 Time-Series</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-cache')">⚡ Cache</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-doc')">📄 Document</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-geo')">🌍 Geo</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-queue')">📬 Queue</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-cron')">⏰ Cron</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-graph')">🕸️ Graph</button>
+        <button class="playground-tab" onclick="showTab(this,'pg-hybrid')">🔗 Hybrid</button>
+      </div>
+
+      <div class="playground-content active" id="pg-fts">
+        <div class="playground-sql"><span class="cmt">-- Full-text search with BM25 ranking and highlighted snippets</span>
+<span class="kw">SELECT</span> title,
+  <span class="fn">ts_headline</span>(<span class="str">'english'</span>, body,
+    <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>, <span class="str">'vector database'</span>),
+    <span class="str">'StartSel=<b>, StopSel=</b>'</span>
+  ) <span class="kw">AS</span> snippet,
+  <span class="fn">ts_rank</span>(tsv, <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>, <span class="str">'vector database'</span>)) <span class="kw">AS</span> relevance
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> tsv <span class="op">@@</span> <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>, <span class="str">'vector database'</span>)
+<span class="kw">ORDER BY</span> relevance <span class="kw">DESC</span>;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  title                      | snippet                                           | relevance
+ ----------------------------+---------------------------------------------------+----------
+  Vector Search with pgvector | ...brings <b>vector</b> similarity search to... <b>databases</b>... |   0.0607</pre>
+        </div>
+        <div class="playground-note">💡 websearch_to_tsquery converts natural language to boolean query. GIN index makes this fast.</div>
+      </div>
+
+      <div class="playground-content" id="pg-vector">
+        <div class="playground-sql"><span class="cmt">-- Find 5 most similar documents using cosine similarity</span>
+<span class="kw">SELECT</span> title,
+  <span class="num">1</span> <span class="op">-</span> (embedding <span class="op"><=></span> <span class="str">'[0.1, 0.2, ...]'</span>::vector) <span class="kw">AS</span> similarity
+<span class="kw">FROM</span> vector_documents
+<span class="kw">ORDER BY</span> embedding <span class="op"><=></span> <span class="str">'[0.1, 0.2, ...]'</span>::vector
+<span class="kw">LIMIT</span> <span class="num">5</span>;
+
+<span class="cmt">-- The <=> operator computes cosine distance</span>
+<span class="cmt">-- HNSW index makes this O(log n) not O(n)</span></div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  title       | similarity
+ -------------+-----------
+  Document 7  |    0.8923
+  Document 3  |    0.8741
+  Document 15 |    0.8612
+  Document 9  |    0.8534
+  Document 1  |    0.8201</pre>
+        </div>
+        <div class="playground-note">💡 In production: generate embeddings via OpenAI/Hugging Face, store them in the vector column.</div>
+      </div>
+
+      <div class="playground-content" id="pg-ts">
+        <div class="playground-sql"><span class="cmt">-- Aggregate temperature by hour (like InfluxDB GROUP BY time(1h))</span>
+<span class="kw">SELECT</span>
+  <span class="fn">date_trunc</span>(<span class="str">'hour'</span>, recorded_at) <span class="kw">AS</span> bucket,
+  <span class="fn">ROUND</span>(<span class="fn">AVG</span>(value)::numeric, <span class="num">2</span>) <span class="kw">AS</span> avg_temp,
+  <span class="fn">ROUND</span>(<span class="fn">MIN</span>(value)::numeric, <span class="num">2</span>) <span class="kw">AS</span> min_temp,
+  <span class="fn">ROUND</span>(<span class="fn">MAX</span>(value)::numeric, <span class="num">2</span>) <span class="kw">AS</span> max_temp,
+  <span class="fn">COUNT</span>(*) <span class="kw">AS</span> samples
+<span class="kw">FROM</span> sensor_readings
+<span class="kw">WHERE</span> sensor_id = <span class="str">'sensor-1'</span>
+  <span class="kw">AND</span> metric_name = <span class="str">'temperature'</span>
+  <span class="kw">AND</span> recorded_at <span class="op">></span> <span class="fn">NOW</span>() <span class="op">-</span> <span class="str">'7 days'</span>::interval
+<span class="kw">GROUP BY</span> bucket <span class="kw">ORDER BY</span> bucket;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  bucket              | avg_temp | min_temp | max_temp | samples
+ ---------------------+----------+----------+----------+--------
+  2026-02-24 06:00:00 |    34.21 |    31.45 |    37.89 |      2
+  2026-02-24 07:00:00 |    28.67 |    25.12 |    32.22 |      3</pre>
+        </div>
+        <div class="playground-note">💡 Partition pruning: only the relevant monthly partition is scanned. BRIN index eliminates most blocks.</div>
+      </div>
+
+      <div class="playground-content" id="pg-cache">
+        <div class="playground-sql"><span class="cmt">-- SET with TTL (like Redis: SET key value EX 3600)</span>
+<span class="kw">INSERT INTO</span> cache_entries (key, value, expires_at)
+<span class="kw">VALUES</span> (
+  <span class="str">'session:user-42'</span>,
+  <span class="str">'{"role":"admin","theme":"dark"}'</span>::jsonb,
+  <span class="fn">NOW</span>() <span class="op">+</span> <span class="str">'1 hour'</span>::interval
+) <span class="kw">ON CONFLICT</span> (key) <span class="kw">DO UPDATE SET</span>
+  value <span class="op">=</span> <span class="kw">EXCLUDED</span>.value, expires_at <span class="op">=</span> <span class="kw">EXCLUDED</span>.expires_at;
+
+<span class="cmt">-- GET (like Redis: GET key)</span>
+<span class="kw">SELECT</span> value <span class="kw">FROM</span> cache_entries
+<span class="kw">WHERE</span> key <span class="op">=</span> <span class="str">'session:user-42'</span> <span class="kw">AND</span> expires_at <span class="op">></span> <span class="fn">NOW</span>();</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  value
+ --------------------------------
+  {"role":"admin","theme":"dark"}</pre>
+        </div>
+        <div class="playground-note">💡 UNLOGGED table — writes skip WAL for near-Redis speed. ON CONFLICT = atomic upsert.</div>
+      </div>
+
+      <div class="playground-content" id="pg-doc">
+        <div class="playground-sql"><span class="cmt">-- Query documents by nested field (like MongoDB db.users.find(...))</span>
+<span class="kw">SELECT</span>
+  data<span class="op">->></span><span class="str">'name'</span> <span class="kw">AS</span> name,
+  data<span class="op">->></span><span class="str">'email'</span> <span class="kw">AS</span> email,
+  data<span class="op">#>></span><span class="str">'{address,city}'</span> <span class="kw">AS</span> city
+<span class="kw">FROM</span> documents
+<span class="kw">WHERE</span> collection <span class="op">=</span> <span class="str">'users'</span>
+  <span class="kw">AND</span> data <span class="op">@></span> <span class="str">'{"address":{"city":"New York"}}'</span>;
+
+<span class="cmt">-- The @> operator uses the GIN index</span>
+<span class="cmt">-- No per-field index definition needed!</span></div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  name  | email             | city
+ -------+-------------------+----------
+  Alice | alice@example.com | New York</pre>
+        </div>
+        <div class="playground-note">💡 GIN index on JSONB indexes all keys/values. @> containment check is equivalent to MongoDB's find().</div>
+      </div>
+
+      <div class="playground-content" id="pg-geo">
+        <div class="playground-sql"><span class="cmt">-- Find landmarks near NYC (within 50km), sorted by distance</span>
+<span class="kw">SELECT</span> name,
+  <span class="fn">ROUND</span>(
+    <span class="fn">ST_Distance</span>(coordinates,
+      <span class="fn">ST_MakePoint</span>(<span class="num">-74.006</span>, <span class="num">40.713</span>)::geography
+    )::numeric / <span class="num">1000</span>, <span class="num">1</span>
+  ) <span class="kw">AS</span> distance_km
+<span class="kw">FROM</span> geo_locations
+<span class="kw">WHERE</span> <span class="fn">ST_DWithin</span>(
+  coordinates,
+  <span class="fn">ST_MakePoint</span>(<span class="num">-74.006</span>, <span class="num">40.713</span>)::geography,
+  <span class="num">50000</span>
+) <span class="kw">ORDER BY</span> distance_km;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  name               | distance_km
+ --------------------+------------
+  Statue of Liberty  |        5.3</pre>
+        </div>
+        <div class="playground-note">💡 ST_DWithin uses the GiST spatial index. geography type calculates on a sphere — accurate anywhere on Earth.</div>
+      </div>
+
+      <div class="playground-content" id="pg-queue">
+        <div class="playground-sql"><span class="cmt">-- Create a queue and send a task message</span>
+<span class="kw">SELECT</span> pgmq.<span class="fn">create</span>(<span class="str">'email_queue'</span>);
+
+<span class="kw">SELECT</span> pgmq.<span class="fn">send</span>(<span class="str">'email_queue'</span>,
+  <span class="str">'{"to":"user@example.com","subject":"Welcome!","template":"onboarding"}'</span>::jsonb);
+
+<span class="cmt">-- Worker: read message with 30s visibility timeout</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> pgmq.<span class="fn">read</span>(<span class="str">'email_queue'</span>, <span class="num">30</span>, <span class="num">1</span>);
+
+<span class="cmt">-- After processing: delete the message</span>
+<span class="kw">SELECT</span> pgmq.<span class="fn">delete</span>(<span class="str">'email_queue'</span>, <span class="num">1</span>);</div>
+        <div class="playground-result">
+          <h5>Result (read)</h5>
+          <pre>  msg_id | read_ct | message
+ --------+---------+-------------------------------------------
+       1 |       1 | {"to":"user@example.com","subject":"Welcome!","template":"onboarding"}</pre>
+        </div>
+        <div class="playground-note">💡 Visibility timeout: if the worker crashes, the message reappears after 30s for another worker to pick up.</div>
+      </div>
+
+      <div class="playground-content" id="pg-cron">
+        <div class="playground-sql"><span class="cmt">-- Schedule cache cleanup every hour</span>
+<span class="kw">SELECT</span> cron.<span class="fn">schedule</span>(<span class="str">'cleanup-expired'</span>, <span class="str">'0 * * * *'</span>,
+  $$<span class="kw">DELETE FROM</span> cache <span class="kw">WHERE</span> expires_at <span class="op">&lt;</span> <span class="fn">NOW</span>()$$);
+
+<span class="cmt">-- Refresh materialized view daily at 3am</span>
+<span class="kw">SELECT</span> cron.<span class="fn">schedule</span>(<span class="str">'refresh-stats'</span>, <span class="str">'0 3 * * *'</span>,
+  $$<span class="kw">REFRESH MATERIALIZED VIEW CONCURRENTLY</span> daily_stats$$);
+
+<span class="cmt">-- Check recent job runs</span>
+<span class="kw">SELECT</span> jobname, status, return_message, end_time
+<span class="kw">FROM</span> cron.job_run_details <span class="kw">ORDER BY</span> end_time <span class="kw">DESC LIMIT</span> <span class="num">5</span>;</div>
+        <div class="playground-result">
+          <h5>Result (job history)</h5>
+          <pre>  jobname          | status    | return_message  | end_time
+ ------------------+-----------+-----------------+---------------------
+  cleanup-expired  | succeeded | DELETE 42       | 2026-02-24 14:00:01
+  refresh-stats    | succeeded | REFRESH         | 2026-02-24 03:00:03</pre>
+        </div>
+        <div class="playground-note">💡 pg_cron runs inside Postgres — no external cron daemon needed. Job history is queryable via SQL.</div>
+      </div>
+
+      <div class="playground-content" id="pg-graph">
+        <div class="playground-sql"><span class="cmt">-- Traverse org chart: find all reports under Alice</span>
+<span class="kw">WITH RECURSIVE</span> org_tree <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> id, name, manager_id, <span class="num">0</span> <span class="kw">AS</span> depth
+  <span class="kw">FROM</span> employees <span class="kw">WHERE</span> name = <span class="str">'Alice'</span>
+  <span class="kw">UNION ALL</span>
+  <span class="kw">SELECT</span> e.id, e.name, e.manager_id, t.depth + <span class="num">1</span>
+  <span class="kw">FROM</span> employees e <span class="kw">JOIN</span> org_tree t <span class="kw">ON</span> e.manager_id = t.id
+)
+<span class="kw">SELECT</span> <span class="fn">repeat</span>(<span class="str">'  '</span>, depth) <span class="op">||</span> name <span class="kw">AS</span> org_chart, depth
+<span class="kw">FROM</span> org_tree <span class="kw">ORDER BY</span> depth, name;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  org_chart     | depth
+ ---------------+------
+  Alice         |     0
+    Bob         |     1
+    Carol       |     1
+      Dave      |     2
+      Eve       |     2</pre>
+        </div>
+        <div class="playground-note">💡 WITH RECURSIVE performs BFS/DFS traversal in pure SQL. Add CYCLE detection (PG 14+) to prevent infinite loops.</div>
+      </div>
+
+      <div class="playground-content" id="pg-hybrid">
+        <div class="playground-sql"><span class="cmt">-- Hybrid search: BM25 keywords + vector similarity with RRF fusion</span>
+<span class="kw">WITH</span> kw <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> id, title, <span class="fn">ROW_NUMBER</span>() <span class="kw">OVER</span>(
+    <span class="kw">ORDER BY</span> <span class="fn">ts_rank</span>(tsv, <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>, <span class="str">'postgres performance'</span>)) <span class="kw">DESC</span>
+  ) <span class="kw">AS</span> rk <span class="kw">FROM</span> articles
+  <span class="kw">WHERE</span> tsv <span class="op">@@</span> <span class="fn">websearch_to_tsquery</span>(<span class="str">'english'</span>, <span class="str">'postgres performance'</span>) <span class="kw">LIMIT</span> <span class="num">20</span>
+),
+vec <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> id, title, <span class="fn">ROW_NUMBER</span>() <span class="kw">OVER</span>(
+    <span class="kw">ORDER BY</span> embedding <span class="op"><=></span> <span class="str">'[0.1,0.2,...]'</span>::vector
+  ) <span class="kw">AS</span> rk <span class="kw">FROM</span> articles
+  <span class="kw">ORDER BY</span> embedding <span class="op"><=></span> <span class="str">'[0.1,0.2,...]'</span>::vector <span class="kw">LIMIT</span> <span class="num">20</span>
+)
+<span class="kw">SELECT</span> <span class="fn">COALESCE</span>(kw.title, vec.title) <span class="kw">AS</span> title,
+  <span class="fn">ROUND</span>((<span class="fn">COALESCE</span>(<span class="num">1.0</span>/(<span class="num">60</span>+kw.rk),<span class="num">0</span>) + <span class="fn">COALESCE</span>(<span class="num">1.0</span>/(<span class="num">60</span>+vec.rk),<span class="num">0</span>))::numeric, <span class="num">4</span>) <span class="kw">AS</span> rrf
+<span class="kw">FROM</span> kw <span class="kw">FULL OUTER JOIN</span> vec <span class="kw">ON</span> kw.id = vec.id
+<span class="kw">ORDER BY</span> rrf <span class="kw">DESC LIMIT</span> <span class="num">5</span>;</div>
+        <div class="playground-result">
+          <h5>Result</h5>
+          <pre>  title                          | rrf
+ --------------------------------+--------
+  Postgres Performance Tuning    | 0.0328
+  Database Optimization Guide    | 0.0270
+  Query Planning Internals       | 0.0213
+  Index Selection Strategies     | 0.0180
+  Scaling PostgreSQL             | 0.0164</pre>
+        </div>
+        <div class="playground-note">💡 RRF score = 1/(60+rank_keyword) + 1/(60+rank_vector). Documents that rank high in BOTH lists rise to the top.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     WHEN NOT TO USE POSTGRES
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="section" style="background:var(--bg2)">
+  <div class="container">
+    <div class="reveal">
+      <span class="badge badge-blue">Honest Take</span>
+      <h2 style="font-size:2rem;font-weight:800;margin:16px 0 8px">When to Still Use Specialized Tools</h2>
+      <p style="color:var(--fg2);margin-bottom:32px">Postgres covers 90% of use cases. Here's the other 10%.</p>
+    </div>
+    <div class="concepts-grid reveal">
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--red)">
+        <h4>⏱️ Sub-millisecond latency</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px">Redis: ~0.1ms. Postgres UNLOGGED: ~1-5ms. If you need <0.5ms for every cache hit, keep Redis.</p>
+      </div>
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--orange)">
+        <h4>🧮 1 Billion+ vectors</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px">At extreme scale, a managed vector DB (Pinecone, Qdrant Cloud) may be more cost-effective due to specialized sharding.</p>
+      </div>
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--accent2)">
+        <h4>📨 High-throughput event streaming</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px">pgmq handles task queues well. But for millions of events/sec with multi-consumer replay and partitioned topics, Kafka/Pulsar still leads.</p>
+      </div>
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--accent3)">
+        <h4>🕸️ Deep graph traversals (10+ hops)</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px">Recursive CTEs handle 3-10 levels great. For 50+ hop traversals on billion-edge graphs, Neo4j's native storage engine is faster.</p>
+      </div>
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--pink)">
+        <h4>📊 Massive text corpora (TB+)</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px">Elasticsearch's distributed sharding across nodes is more mature for multi-terabyte text search clusters.</p>
+      </div>
+      <div style="padding:24px;background:var(--bg);border:1px solid var(--bg4);border-radius:var(--radius);border-left:3px solid var(--green)">
+        <h4 style="color:var(--green)">✅ Everything else?</h4>
+        <p style="color:var(--fg2);font-size:.9rem;margin-top:8px"><strong style="color:var(--green)">Just use Postgres.</strong> One database, one backup, one connection string, one set of credentials, one monitoring dashboard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CTA
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="cta-section">
+  <div class="container reveal">
+    <h2>Ready to Simplify?</h2>
+    <p>Explore the full Spring Boot implementation — every concept above is a working REST API.</p>
+    <div class="cta-buttons">
+      <a href="https://github.com/OrganizationToBeNamed/just-use-postgres" target="_blank" class="btn btn-primary">⭐ Star the Repo</a>
+    </div>
+    <p style="color:var(--fg3);font-size:.85rem;margin-top:32px">Spring Boot 3.3 · PostgreSQL 16 · pgvector · PostGIS · pgmq · pg_cron · Docker Compose</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════════════════════════════════ -->
+<footer>
+  <div class="container">
+    <p>Built with 🐘 PostgreSQL — the only database you need.</p>
+    <p style="margin-top:8px">
+      <a href="https://github.com/OrganizationToBeNamed/just-use-postgres">GitHub</a>
+    </p>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+// ── Scroll-triggered reveal animations ──────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ── Nav scroll effect ───────────────────────────────────────────────────
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 50);
+});
+
+// ── Playground tab switching ────────────────────────────────────────────
+function showTab(btn, tabId) {
+  const playground = btn.closest('.playground');
+  playground.querySelectorAll('.playground-tab').forEach(t => t.classList.remove('active'));
+  playground.querySelectorAll('.playground-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// ── Counter animation ───────────────────────────────────────────────────
+const counterObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const el = entry.target;
+      const target = parseInt(el.dataset.target);
+      let current = 0;
+      const increment = target / 40;
+      const timer = setInterval(() => {
+        current += increment;
+        if (current >= target) {
+          current = target;
+          clearInterval(timer);
+        }
+        el.textContent = Math.round(current);
+      }, 30);
+      counterObserver.unobserve(el);
+    }
+  });
+}, { threshold: 0.5 });
+
+document.querySelectorAll('[data-target]').forEach(el => counterObserver.observe(el));
+
+// ── Smooth scroll for nav links ─────────────────────────────────────────
+document.querySelectorAll('nav a[href^="#"]').forEach(link => {
+  link.addEventListener('click', (e) => {
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector('nav ul').classList.remove('open');
+    }
+  });
+});
+
+// ── Clickable comparison table rows → deep-dive sections ────────────────
+document.querySelectorAll('.comparison-table tbody tr[data-link]').forEach(row => {
+  row.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return; // let native link handle it
+    const target = document.querySelector(row.dataset.link);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// ── Smooth scroll for deep-link anchors inside comparison table ─────────
+document.querySelectorAll('.comparison-table .deep-link').forEach(link => {
+  link.addEventListener('click', (e) => {
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// ── Close mobile nav on outside click ───────────────────────────────────
+document.addEventListener('click', (e) => {
+  const nav = document.querySelector('nav ul');
+  const hamburger = document.querySelector('.hamburger');
+  if (!nav.contains(e.target) && !hamburger.contains(e.target)) {
+    nav.classList.remove('open');
+  }
+});
+</script>
+
+</body>
+</html>
