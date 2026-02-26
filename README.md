@@ -4,6 +4,8 @@ A Spring Boot application demonstrating how **one PostgreSQL instance** replaces
 10 specialized databases/services — using the **same algorithms** they use internally.
 
 > **[Live Interactive Guide](https://OrganizationToBeNamed.github.io/just-use-postgres/)** — explore the concepts in your browser.
+>
+> **[Live API (Swagger UI)](http://140.245.248.160/swagger-ui/index.html)** — interact with the hosted REST API directly.
 
 ---
 
@@ -52,7 +54,8 @@ The script builds Docker images, starts Postgres + Spring Boot, waits for health
 
 | URL | What |
 |-----|------|
-| http://localhost:8080/swagger-ui.html | **Swagger UI** — explore all 10 APIs interactively |
+| **[http://140.245.248.160/swagger-ui/index.html](http://140.245.248.160/swagger-ui/index.html)** | **Live Swagger UI** — hosted instance, no setup needed |
+| http://localhost:8080/swagger-ui/index.html | Swagger UI (local) — explore all 10 APIs interactively |
 | http://localhost:8080/api-docs | OpenAPI spec (JSON) |
 | http://localhost:8080/actuator/health | Health check |
 
